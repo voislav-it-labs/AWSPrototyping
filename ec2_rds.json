@@ -1,0 +1,137 @@
+{
+"AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "Testing EC2 and RDS with cloudformation template",
+    "Metadata": {
+
+    },
+    "Parameters": {
+    
+    },
+    "Mappings": {
+      "AMLinuxAMI": {
+        "eu-central-1": {
+          "HVM64": "ami-08c148bb835696b45"
+        },
+        "eu-west-1": {
+          "HVM64": "ami-08a2aed6e0a6f9c7d"
+        },
+        "eu-west-2": {
+          "HVM64": "ami-09b89ad3c5769cca2"
+        },
+        "eu-west-3": {
+          "HVM64": "ami-0697b068b80d79421"
+        },
+        "eu-north-1": {
+          "HVM64": "ami-0e2cfbf95ba9e1a36"
+        }
+      }
+    },
+    "Conditions": {
+
+    },
+    "Resources": {
+      "CaledoVPC": {
+        "Type": "AWS::EC2::VPC",
+        "Properties": {
+          "CidrBlock": "172.32.0.0/16",
+          "EnableDnsHostnames": true,
+          "Tags": [{"Key": "group", "Value": "CloudFormationEC2RDS"}]
+        }
+      },
+      "CaledoVPCRouteTable": {
+        "Type": "AWS::EC2::RouteTable",
+        "Properties": {
+          "VpcId": { "Ref": "CaledoVPC" },
+          "Tags": [{"Key": "group", "Value": "CloudFormationEC2RDS"}]
+        }
+      },
+      "RouteToInternet": {
+        "Type": "AWS::EC2::Route",
+        "Properties": {
+          "RouteTableId": { "Ref": "CaledoVPCRouteTable"},
+          "DestinationCidrBlock": "0.0.0.0/0",
+          "GatewayId": { "Ref": "CaledoVPCInternetGateway"}
+        }
+      },
+      
+      "routeTableAssocName": {
+        "Type": "AWS::EC2::SubnetRouteTableAssociation",
+        "Properties": {
+          "SubnetId": { "Ref": "CaledoVPCPublicSubnet" },
+          "RouteTableId": { "Ref": "CaledoVPCRouteTable"}
+        }
+      },
+      "CaledoVPCPublicSubnet": {
+        "Type": "AWS::EC2::Subnet",
+        "Properties": {
+          "VpcId": {
+            "Ref": "CaledoVPC"
+          },
+          "CidrBlock": {
+           "Fn::Select" : [ 0, { "Fn::Cidr": ["172.32.0.0/16", 1, 8] } ]
+          },
+          "MapPublicIpOnLaunch": true,
+          "Tags": [{"Key": "group", "Value": "CloudFormationEC2RDS"}]
+        }
+      },
+      "CaledoVPCInternetGateway": {
+        "Type": "AWS::EC2::InternetGateway",
+        "Properties": {
+          "Tags": [{"Key": "group", "Value": "CloudFormationEC2RDS"}]
+        }
+      },
+      "AttachGateway": {
+        "Type": "AWS::EC2::VPCGatewayAttachment",
+        "Properties": {
+          "VpcId": { "Ref": "CaledoVPC" },
+          "InternetGatewayId": { "Ref": "CaledoVPCInternetGateway" }
+        }
+      },
+      "CaledoWebServerSG" : {
+        "Type" : "AWS::EC2::SecurityGroup",
+        "Properties" : {
+          "GroupDescription" : "Security group for caledo web servers",
+          "SecurityGroupIngress" : [ 
+            { "IpProtocol" : "tcp", "FromPort" : "22", "ToPort" : "22", "CidrIp" : "0.0.0.0/0" }
+          ],
+          "VpcId" : { "Ref": "CaledoVPC" },
+          "Tags": [{"Key": "group", "Value": "CloudFormationEC2RDS"}]
+        }
+      },
+      "WebServer": {
+          "Type": "AWS::EC2::Instance",
+          "Properties": {
+            "KeyName": "awsdeveloping-homepc-ubuntu",
+            "ImageId": {
+              "Fn::FindInMap": [
+                  "AMLinuxAMI",
+                  { "Ref": "AWS::Region"},
+                  "HVM64"
+              ]
+            },
+            "InstanceType": "t2.micro",
+            "Monitoring": true,
+            "NetworkInterfaces": [ 
+              {
+                "AssociatePublicIpAddress": "true",
+                "DeviceIndex": "0",
+                "GroupSet": [{ "Ref" : "CaledoWebServerSG" }],
+                "SubnetId": { "Ref" : "CaledoVPCPublicSubnet" }
+              }
+            ],
+            "Tags": [{"Key": "group", "Value": "CloudFormationEC2RDS"}]
+          },
+          "DependsOn": "CaledoVPC"
+        }
+    },
+    "Outputs": {
+      "WebServer": {
+        "Description": "Caledo web server instance id",
+        "Value": { "Ref": "WebServer" }
+      },
+      "WebServerDNSName": {
+        "Description": "Caledo web server url",
+        "Value": { "Fn::GetAtt" : [ "WebServer", "PublicDnsName" ]}
+      }
+    }
+}
